@@ -1,0 +1,170 @@
+
+#pragma comment (lib, "ws2_32.lib")
+#include <winsock2.h>
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <vector>
+#include <algorithm>
+#include <string>
+#include <cctype>
+#include <fstream>
+#pragma warning(disable: 4996)
+
+
+using namespace std;
+
+mutex mtx;  
+vector<string> buffer;  
+
+bool is_valid_input(const string& input) {
+    if (input.length() > 64) {
+        cout << "Error: Input exceeds 64 characters!" << endl;
+        return false;
+    }
+
+    if (!all_of(input.begin(), input.end(), ::isdigit)) {
+        cout << "Error: Input contains non-digit characters!" << endl;
+        return false;
+    }
+    return true;
+}
+
+
+string process_string(string input) {
+   
+    sort(input.begin(), input.end(), greater<char>());
+
+  
+    string result;
+    for (char ch : input) {
+        if ((ch - '0') % 2 == 0) {
+            result += "КВ";
+        }
+        else {
+            result += ch;
+        }
+    }
+
+    return result;
+}
+
+void input_thread() {
+    while (true)
+    {
+        string input;
+        cout << "Enter a string of digits (max 64 characters): ";
+        cin >> input;
+
+        if (is_valid_input(input))
+        {
+            string processed_str = process_string(input);
+
+            lock_guard<mutex> lock(mtx);
+            buffer.push_back(processed_str);
+
+            cout << "Processed string added to buffer: " << processed_str << endl;
+        }
+
+
+        cout << "Do you want to enter another string? (y/n): ";
+        char isExit;
+        cin >> isExit;
+
+        if (isExit == 'n' || isExit == 'N')
+        {
+            break;
+        }
+    }
+}
+
+
+void trans_data(int sum);
+
+void processing_thread()
+{
+    while (true)
+    {
+        
+
+        unique_lock<mutex> lock(mtx);
+
+        if (!buffer.empty())
+        {
+            string data = buffer.back();
+            buffer.clear(); 
+
+            lock.unlock(); 
+
+            cout << "Data received by processing thread: " << data << endl;
+
+            int sum = 0;
+            for (char ch : data) {
+                if (isdigit(static_cast<unsigned char>(ch))) {
+                    sum += ch - '0';
+                }
+            }
+
+
+            cout << "Sum of numeric values: " << sum << endl;
+
+
+            trans_data(sum);
+
+        }
+    }
+}
+
+
+
+int main()
+{
+    //setlocale(LC_ALL, "Russian");
+    thread producer_thread(input_thread);
+    thread consumer_thread(processing_thread);
+    producer_thread.join();
+    consumer_thread.join();
+
+    return 0;
+
+
+}
+
+
+
+void trans_data(int sum)
+{
+    WSAData wsaData;
+    WORD DLLVersion = MAKEWORD(2, 1);
+    if (WSAStartup(DLLVersion, &wsaData) != 0)
+    {
+        cout << "error#1" << endl;
+        exit(1);
+    }
+    SOCKADDR_IN addr;
+
+    int sizeofaddr = sizeof(addr);
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    addr.sin_port = htons(8888);
+    addr.sin_family = AF_INET;
+
+    SOCKET sListen = socket(AF_INET, SOCK_STREAM, NULL);
+    bind(sListen, (SOCKADDR*)&addr, sizeof(addr));
+    listen(sListen, SOMAXCONN);
+    SOCKET newConnection;
+    newConnection = accept(sListen, (SOCKADDR*)&addr, &sizeofaddr);
+
+    if (newConnection == 0)
+    {
+        cout << "error#2" << endl;
+
+    }
+    else {
+        cout << "Client Connected! " << endl;
+        string sumstr = to_string(sum);
+        send(newConnection, sumstr.c_str(), sumstr.size(), NULL);
+        
+    }
+}
+
+
